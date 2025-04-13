@@ -1,51 +1,47 @@
-const express = require('express');
-const cookieParser = require('cookie-parser');
-const { db, doc, getDoc, updateDoc, setDoc } = require('./firebase');
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const cookieParser = require("cookie-parser");
 
 const app = express();
-app.use(cookieParser());
+const PORT = process.env.PORT || 3000;
 
-const forms = [
-  'https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vhUzz6U0EsNHlyUYUFUOUP1UQUtHS0FURVZTRU1OMVA3VzNaNjdEM1VNUy4u',
-  'https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vjMfXirSG-RKtmxr434eEEFUNDFVSEJFTUw3WkxKMjlTTjVSUDVLU0VOWC4u',
-  'https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vhUzz6U0EsNHlyUYUFUOUP1UODk1TE5OVTdTVEdYUTRMN1ZJOExBREZFWS4u',
-  'https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vgeyG_p5pVxOjvYFHZJY8yJUQzJZUEVEMjhVRUI5SVNYSkUzVFFPUlVaUS4u'
+const links = [
+  "https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vgeyG_p5pVxOjvYFHZJY8yJUQzJZUEVEMjhVRUI5SVNYSkUzVFFPUlVaUS4u",
+  "https://forms.office.com/Pages/ResponsePage.aspx?id=UJdqtbZoL0qmXCbF96J7vhUzz6U0EsNHlyUYUFUOUP1UODk1TE5OVTdTVEdYUTRMN1ZJOExBREZFWS4u"
 ];
 
-async function getCounters() {
-  const ref = doc(db, 'counters', 'formCounts');
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, { counts: [0, 0, 0, 0] });
-    return [0, 0, 0, 0];
-  }
-  return snap.data().counts;
-}
+const counterFile = path.join(__dirname, "counter.json");
 
-async function updateCounters(index) {
-  const ref = doc(db, 'counters', 'formCounts');
-  const snap = await getDoc(ref);
-  const counts = snap.data().counts;
+app.use(cookieParser());
+
+app.get("/", (req, res) => {
+  let index;
+
+  // Jeśli ciasteczko już istnieje — użyj tego samego linku
+  if (req.cookies.redirectIndex !== undefined) {
+    index = parseInt(req.cookies.redirectIndex);
+    res.redirect(links[index]);
+    return;
+  }
+
+  // Pobierz dane z pliku counter.json
+  let counts = JSON.parse(fs.readFileSync(counterFile));
+
+  // Znajdź indeks z najmniejszą liczbą przydzielonych osób
+  index = counts.indexOf(Math.min(...counts));
+
+  // Zaktualizuj licznik
   counts[index]++;
-  await updateDoc(ref, { counts });
-}
+  fs.writeFileSync(counterFile, JSON.stringify(counts));
 
-app.get('/', async (req, res) => {
-  if (req.cookies.formIndex) {
-    return res.redirect(forms[parseInt(req.cookies.formIndex)]);
-  }
-
-  const counts = await getCounters();
-  const min = Math.min(...counts);
-  const index = counts.indexOf(min);
-
-  res.cookie('formIndex', index, { maxAge: 365 * 24 * 60 * 60 * 1000 });
-  await updateCounters(index);
-
-  return res.redirect(forms[index]);
+  // Ustaw ciasteczko na 1 rok
+  res.cookie("redirectIndex", index, { maxAge: 365 * 24 * 60 * 60 * 1000 });
+  
+  // Przekieruj
+  res.redirect(links[index]);
 });
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
